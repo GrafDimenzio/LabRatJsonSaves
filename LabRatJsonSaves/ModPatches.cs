@@ -16,66 +16,10 @@ namespace LabRatJsonSaves
         [HarmonyPrefix]
         public static bool OnSave(SavingLoading __instance)
         {
-            Log.LogMessage("Save Game");
             try
             {
-                var objects = UnityEngine.Object.FindObjectsOfType<InstSavableEntity>();
-                var safe = new SaveFile();
-
-                foreach(var obj in objects)
-                {
-                    var par = obj.transform.parent;
-                    obj.transform.parent = null;
-
-                    var entity = new SaveFile.SaveEntity
-                    {
-                        Guid = Guid.NewGuid(),
-                        Player = obj.player,
-                        Position = obj.transform.position,
-                        PrefabPath = obj.prefabPath,
-                        Scale = obj.transform.localScale,
-                        Rotation = obj.transform.rotation.eulerAngles,
-                    };
-
-                    foreach (var mono in obj.saveComponents)
-                    {
-                        var savecomp = new SaveFile.ComponentSave();
-                        savecomp.ComponentType = mono.GetType();
-
-                        foreach (var field in savecomp.ComponentType.GetFields())
-                        {
-                            if (!SaveFile.IsTypeValid(field.FieldType)) continue;
-
-                            if (field.FieldType.ToString() == "System.Collections.Generic.List`1[System.Boolean]")
-                                savecomp.Fields.Add(field.Name, (field.GetValue(mono) as List<bool>)?.ToArray());
-                            else
-                                savecomp.Fields.Add(field.Name, field.GetValue(mono));
-                        }
-
-                        foreach (var prop in savecomp.ComponentType.GetProperties())
-                        {
-                            if (!SaveFile.IsTypeValid(prop.PropertyType)) continue;
-                            if (!prop.CanWrite) continue;
-
-                            if (prop.PropertyType.ToString() == "System.Collections.Generic.List`1[System.Boolean]")
-                                savecomp.Properties.Add(prop.Name, (prop.GetValue(mono) as List<bool>)?.ToArray());
-                            else
-                                savecomp.Properties.Add(prop.Name, prop.GetValue(mono));
-                        }
-
-                        entity.SaveComponents.Add(savecomp);
-                    }
-
-                    if (!obj.room)
-                        safe.Items.Add(entity);
-                    else
-                        safe.Rooms.Add(entity);
-
-                    obj.transform.parent = par;
-                }
-
-                CreateFiles(out var path);
-                File.WriteAllText(path, JsonConvert.SerializeObject(safe));
+                Log.LogMessage("Save Game");
+                SaveGame();
 
                 GameObject.FindWithTag("saveManager").GetComponent<savePlayerInfo>().save();
                 var buttonEvent = __instance.onSave;
@@ -89,6 +33,67 @@ namespace LabRatJsonSaves
                 Log.LogMessage(ex);
             }
             return false;
+        }
+
+        private static void SaveGame()
+        {
+            var objects = UnityEngine.Object.FindObjectsOfType<InstSavableEntity>();
+            var save = new SaveFile();
+
+            foreach (var obj in objects)
+            {
+                var par = obj.transform.parent;
+                obj.transform.parent = null;
+
+                var entity = new SaveFile.SaveEntity
+                {
+                    Guid = Guid.NewGuid(),
+                    Player = obj.player,
+                    Position = obj.transform.position,
+                    PrefabPath = obj.prefabPath,
+                    Scale = obj.transform.localScale,
+                    Rotation = obj.transform.rotation.eulerAngles,
+                };
+
+                foreach (var mono in obj.saveComponents)
+                {
+                    var savecomp = new SaveFile.ComponentSave();
+                    savecomp.ComponentType = mono.GetType();
+
+                    foreach (var field in savecomp.ComponentType.GetFields())
+                    {
+                        if (!SaveFile.IsTypeValid(field.FieldType)) continue;
+
+                        if (field.FieldType.ToString() == "System.Collections.Generic.List`1[System.Boolean]")
+                            savecomp.Fields.Add(field.Name, (field.GetValue(mono) as List<bool>)?.ToArray());
+                        else
+                            savecomp.Fields.Add(field.Name, field.GetValue(mono));
+                    }
+
+                    foreach (var prop in savecomp.ComponentType.GetProperties())
+                    {
+                        if (!SaveFile.IsTypeValid(prop.PropertyType)) continue;
+                        if (!prop.CanWrite) continue;
+
+                        if (prop.PropertyType.ToString() == "System.Collections.Generic.List`1[System.Boolean]")
+                            savecomp.Properties.Add(prop.Name, (prop.GetValue(mono) as List<bool>)?.ToArray());
+                        else
+                            savecomp.Properties.Add(prop.Name, prop.GetValue(mono));
+                    }
+
+                    entity.SaveComponents.Add(savecomp);
+                }
+
+                if (!obj.room)
+                    save.Items.Add(entity);
+                else
+                    save.Rooms.Add(entity);
+
+                obj.transform.parent = par;
+            }
+
+            CreateFiles(out var path);
+            File.WriteAllText(path, JsonConvert.SerializeObject(save));
         }
 
         private static void CreateFiles(out string savefilepath)
