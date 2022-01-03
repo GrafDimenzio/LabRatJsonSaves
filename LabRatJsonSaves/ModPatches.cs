@@ -1,18 +1,15 @@
 ﻿using HarmonyLib;
-using Mirror;
 using Newtonsoft.Json;
 using SynapseLabrat.API;
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Reflection;
 using UnityEngine;
 using Yurtle.Saving;
 
 namespace LabRatJsonSaves
 {
-    //Made by Dimenzio
     [HarmonyPatch(typeof(SavingLoading), nameof(SavingLoading.Save))]
     internal static class SavePatch
     {
@@ -24,114 +21,60 @@ namespace LabRatJsonSaves
             {
                 var objects = UnityEngine.Object.FindObjectsOfType<InstSavableEntity>();
                 var safe = new SaveFile();
+
                 foreach(var obj in objects)
                 {
-                    if (!obj.room)
+                    var par = obj.transform.parent;
+                    obj.transform.parent = null;
+
+                    var entity = new SaveFile.SaveEntity
                     {
-                        var par = obj.transform.parent;
-                        obj.transform.parent = null;
+                        Guid = Guid.NewGuid(),
+                        Player = obj.player,
+                        Position = obj.transform.position,
+                        PrefabPath = obj.prefabPath,
+                        Scale = obj.transform.localScale,
+                        Rotation = obj.transform.rotation.eulerAngles,
+                    };
 
-                        var entity = new SaveFile.SaveEntity
+                    foreach (var mono in obj.saveComponents)
+                    {
+                        var savecomp = new SaveFile.ComponentSave();
+                        savecomp.ComponentType = mono.GetType();
+
+                        foreach (var field in savecomp.ComponentType.GetFields())
                         {
-                            Guid = Guid.NewGuid(),
-                            Player = obj.player,
-                            Position = obj.transform.position,
-                            PrefabPath = obj.prefabPath,
-                            Scale = obj.transform.localScale,
-                            Rotation = obj.transform.rotation.eulerAngles,
-                        };
+                            if (!SaveFile.IsTypeValid(field.FieldType)) continue;
 
-                        foreach(var mono in obj.saveComponents)
+                            if (field.FieldType.ToString() == "System.Collections.Generic.List`1[System.Boolean]")
+                                savecomp.Fields.Add(field.Name, (field.GetValue(mono) as List<bool>)?.ToArray());
+                            else
+                                savecomp.Fields.Add(field.Name, field.GetValue(mono));
+                        }
+
+                        foreach (var prop in savecomp.ComponentType.GetProperties())
                         {
-                            var savecomp = new SaveFile.ComponentSave();
-                            savecomp.ComponentType = mono.GetType();
+                            if (!SaveFile.IsTypeValid(prop.PropertyType)) continue;
+                            if (!prop.CanWrite) continue;
 
-                            foreach(var field in savecomp.ComponentType.GetFields())
-                            {
-                                if (!SaveFile.IsTypeValid(field.FieldType)) continue;
-
-                                if (field.FieldType.ToString() == "System.Collections.Generic.List`1[System.Boolean]")
-                                    savecomp.Fields.Add(field.Name, (field.GetValue(mono) as List<bool>)?.ToArray());
-                                else
-                                    savecomp.Fields.Add(field.Name, field.GetValue(mono));
-                            }
-
-                            foreach (var prop in savecomp.ComponentType.GetProperties())
-                            {
-                                if (!SaveFile.IsTypeValid(prop.PropertyType)) continue;
-                                if (!prop.CanWrite) continue;
-
-                                if(prop.PropertyType.ToString() == "System.Collections.Generic.List`1[System.Boolean]")
-                                    savecomp.Properties.Add(prop.Name, (prop.GetValue(mono) as List<bool>)?.ToArray());
-                                else
+                            if (prop.PropertyType.ToString() == "System.Collections.Generic.List`1[System.Boolean]")
+                                savecomp.Properties.Add(prop.Name, (prop.GetValue(mono) as List<bool>)?.ToArray());
+                            else
                                 savecomp.Properties.Add(prop.Name, prop.GetValue(mono));
-                            }
-
-                            entity.SaveComponents.Add(savecomp);
                         }
 
-                        safe.Items.Add(entity);
-
-                        obj.transform.parent = par;
+                        entity.SaveComponents.Add(savecomp);
                     }
+
+                    if (!obj.room)
+                        safe.Items.Add(entity);
                     else
-                    {
-                        var par = obj.transform.parent;
-                        obj.transform.parent = null;
-
-                        var entity = new SaveFile.SaveEntity
-                        {
-                            Guid = Guid.NewGuid(),
-                            Player = obj.player,
-                            Position = obj.transform.position,
-                            PrefabPath = obj.prefabPath,
-                            Scale = obj.transform.localScale,
-                            Rotation = obj.transform.rotation.eulerAngles,
-                        };
-
-                        foreach (var mono in obj.saveComponents)
-                        {
-                            var savecomp = new SaveFile.ComponentSave();
-                            savecomp.ComponentType = mono.GetType();
-
-                            foreach (var field in savecomp.ComponentType.GetFields())
-                            {
-                                if (!SaveFile.IsTypeValid(field.FieldType)) continue;
-
-                                if (field.FieldType.ToString() == "System.Collections.Generic.List`1[System.Boolean]")
-                                    savecomp.Fields.Add(field.Name, (field.GetValue(mono) as List<bool>)?.ToArray());
-                                else
-                                    savecomp.Fields.Add(field.Name, field.GetValue(mono));
-                            }
-
-                            foreach (var prop in savecomp.ComponentType.GetProperties())
-                            {
-                                if (!SaveFile.IsTypeValid(prop.PropertyType)) continue;
-                                if (!prop.CanWrite) continue;
-
-                                if (prop.PropertyType.ToString() == "System.Collections.Generic.List`1[System.Boolean]")
-                                    savecomp.Properties.Add(prop.Name, (prop.GetValue(mono) as List<bool>)?.ToArray());
-                                else
-                                    savecomp.Properties.Add(prop.Name, prop.GetValue(mono));
-                            }
-
-                            entity.SaveComponents.Add(savecomp);
-                        }
-
                         safe.Rooms.Add(entity);
 
-                        obj.transform.parent = par;
-                    }
+                    obj.transform.parent = par;
                 }
 
-                Directory.CreateDirectory(GameObject.FindWithTag("GameOptions").GetComponent<GameOptions>().getSavePath());
-                var path = Path.Combine(GameObject.FindWithTag("GameOptions").GetComponent<GameOptions>().getSavePath(), "savefile.json");
-                var path2 = Path.Combine(GameObject.FindWithTag("GameOptions").GetComponent<GameOptions>().getSavePath(), "map.yrtlsv");
-                var path3 = Path.Combine(GameObject.FindWithTag("GameOptions").GetComponent<GameOptions>().getSavePath(), "newItems.yrtlsv");
-                if (!File.Exists(path)) File.Create(path).Close();
-                if (!File.Exists(path2)) File.Create(path2).Close();
-                if (!File.Exists(path3)) File.Create(path3).Close();
-
+                CreateFiles(out var path);
                 File.WriteAllText(path, JsonConvert.SerializeObject(safe));
 
                 GameObject.FindWithTag("saveManager").GetComponent<savePlayerInfo>().save();
@@ -146,6 +89,18 @@ namespace LabRatJsonSaves
                 Log.LogMessage(ex);
             }
             return false;
+        }
+
+        private static void CreateFiles(out string savefilepath)
+        {
+            //I still create the empty yrtlsv files since the game don't detect the save files otherwise in the menu
+            Directory.CreateDirectory(GameObject.FindWithTag("GameOptions").GetComponent<GameOptions>().getSavePath());
+            savefilepath = Path.Combine(GameObject.FindWithTag("GameOptions").GetComponent<GameOptions>().getSavePath(), "savefile.json");
+            var path2 = Path.Combine(GameObject.FindWithTag("GameOptions").GetComponent<GameOptions>().getSavePath(), "map.yrtlsv");
+            var path3 = Path.Combine(GameObject.FindWithTag("GameOptions").GetComponent<GameOptions>().getSavePath(), "newItems.yrtlsv");
+            if (!File.Exists(savefilepath)) File.Create(savefilepath).Close();
+            if (!File.Exists(path2)) File.Create(path2).Close();
+            if (!File.Exists(path3)) File.Create(path3).Close();
         }
     }
 
@@ -189,27 +144,8 @@ namespace LabRatJsonSaves
                 if (string.IsNullOrEmpty(room.PrefabPath)) continue;
 
                 var obj = UnityEngine.Object.Instantiate(Resources.Load(room.PrefabPath),room.Position,Quaternion.Euler(room.Rotation)) as GameObject;
-                foreach(var component in room.SaveComponents)
-                {
-                    var type = component.ComponentType;
-                    if(type == null || obj.GetComponent(type) == null) continue;
-
-                    var comp = obj.GetComponent(type);
-
-                    foreach (var field in component.Fields)
-                    {
-                        var compfield = type.GetField(field.Key);
-
-                        compfield.SetValue(comp, ConvertObject(field.Value, compfield.FieldType));
-                    }
-
-                    foreach (var prop in component.Properties)
-                    {
-                        var compfield = type.GetProperty(prop.Key);
-
-                        compfield.SetValue(comp, ConvertObject(prop.Value, compfield.PropertyType));
-                    }
-                }
+                foreach(var componentsave in room.SaveComponents)
+                    LoadComponents(componentsave, obj);
             }
             newItems.DestroyAllEntities();
             controller966.all966s.Clear();
@@ -221,27 +157,8 @@ namespace LabRatJsonSaves
                     newItems.player.transform.rotation = Quaternion.Euler(item.Rotation);
                     newItems.player.transform.localScale = item.Scale;
 
-                    foreach (var component in item.SaveComponents)
-                    {
-                        var type = component.ComponentType;
-                        if (type == null || newItems.player.GetComponent(type) == null) continue;
-
-                        var comp = newItems.player.GetComponent(type);
-
-                        foreach (var field in component.Fields)
-                        {
-                            var compfield = type.GetField(field.Key);
-
-                            compfield.SetValue(comp, ConvertObject(field.Value, compfield.FieldType));
-                        }
-
-                        foreach (var prop in component.Properties)
-                        {
-                            var compfield = type.GetProperty(prop.Key);
-
-                            compfield.SetValue(comp, ConvertObject(prop.Value, compfield.PropertyType));
-                        }
-                    }
+                    foreach (var componentsave in item.SaveComponents)
+                        LoadComponents(componentsave, newItems.player);
 
                     newItems.player.SetActive(true);
                     continue;
@@ -253,35 +170,38 @@ namespace LabRatJsonSaves
                     var obj = UnityEngine.Object.Instantiate(Resources.Load(item.PrefabPath), item.Position, Quaternion.Euler(item.Rotation)) as GameObject;
                     obj.transform.localScale = item.Scale;
 
-                    foreach (var component in item.SaveComponents)
-                    {
-                        var type = component.ComponentType;
-                        if (type == null || obj.GetComponent(type) == null) continue;
-
-                        var comp = obj.GetComponent(type);
-
-                        foreach (var field in component.Fields)
-                        {
-                            var compfield = type.GetField(field.Key);
-
-                            compfield.SetValue(comp, ConvertObject(field.Value, compfield.FieldType));
-                        }
-
-                        foreach (var prop in component.Properties)
-                        {
-                            var compfield = type.GetProperty(prop.Key);
-
-                            compfield.SetValue(comp, ConvertObject(prop.Value, compfield.PropertyType));
-                        }
-                    }
+                    foreach (var componentsave in item.SaveComponents)
+                        LoadComponents(componentsave, obj);
                 }
                 catch(Exception ex)
                 {
+                    //So for some Reason there is even a Error in Vanilla that throws while setting the size of a gameobject and therefore I had to add a second try catch here
                     Log.LogMessage("Base Game Error: " + ex);
                 }
             }
         }
 
+        private static void LoadComponents(SaveFile.ComponentSave componentSave, GameObject obj)
+        {
+            var type = componentSave.ComponentType;
+            if (type == null || obj.GetComponent(type) == null) return;
+
+            var component = obj.GetComponent(type);
+
+            foreach (var fieldstorage in componentSave.Fields)
+            {
+                var field = type.GetField(fieldstorage.Key);
+                field.SetValue(component, ConvertObject(fieldstorage.Value, field.FieldType));
+            }
+
+            foreach (var propertystorage in componentSave.Properties)
+            {
+                var property = type.GetProperty(propertystorage.Key);
+                property.SetValue(component, ConvertObject(propertystorage.Value, property.PropertyType));
+            }
+        }
+
+        //Since I store the values as objects the deserializer assumes the type and I have to convert them into the right type
         private static object ConvertObject(object obj, Type finaltype)
         {
             switch (finaltype.ToString())
