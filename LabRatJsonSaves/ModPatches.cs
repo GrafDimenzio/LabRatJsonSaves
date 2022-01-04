@@ -81,6 +81,9 @@ namespace LabRatJsonSaves
                             savecomp.Properties.Add(prop.Name, prop.GetValue(mono));
                     }
 
+                    if (mono is InventoryAble able)
+                        savecomp.ItemOGScale = able.OGSCALE;
+
                     entity.SaveComponents.Add(savecomp);
                 }
 
@@ -204,6 +207,9 @@ namespace LabRatJsonSaves
                 var property = type.GetProperty(propertystorage.Key);
                 property.SetValue(component, ConvertObject(propertystorage.Value, property.PropertyType));
             }
+
+            if (component is InventoryAble able)
+                able.OGSCALE = componentSave.ItemOGScale;
         }
 
         //Since I store the values as objects the deserializer assumes the type and I have to convert them into the right type
@@ -288,6 +294,8 @@ namespace LabRatJsonSaves
         public class ComponentSave
         {
             public Type ComponentType { get; set; }
+
+            public SerializedVector3 ItemOGScale { get; set; }
 
             public Dictionary<string, object> Fields { get; set; } = new Dictionary<string, object>();
 
